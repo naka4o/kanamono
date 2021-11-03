@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+<meta charset="utf-8">
+<script src="https://jp.vuejs.org/js/vue.min.js"></script>
+
+
+<link href="https://unpkg.com/tabulator-tables/dist/css/tabulator.min.css" 
+    rel="stylesheet">
+<script type="text/javascript" 
+    src="https://unpkg.com/tabulator-tables/dist/js/tabulator.min.js">
+</script>
+
+
+<script>
+let S={};
+S.tdata=[
+{item:'ベース',  price:2517},
+{item:'中央町',  price:1810},
+{item:'仙台土地',price:1340},
+{item:'仙台賃貸',price:450 },
+{item:'預貯金',  price:861 }, // 851+10(有価証券)
+];
+const plist=['sachiko','tomoko','masako','ritsuko','shinya'];
+
+// 合計計算
+S.sum={item:'合計'};
+S.sum.price = 0;
+for(let i in S.tdata){
+    S.tdata[i].id=Number(i)+1;
+    plist.forEach(p=>{
+        S.tdata[i][p]=0;
+    });
+    if(S.tdata[i].item!==S.sum.item){
+        S.sum.price += S.tdata[i].price;
+        plist.forEach(p=>{
+            S.sum[p] = 0;
+        });
+        plist.forEach(p=>{
+            if(Number(S.tdata[i][p])){
+                S.sum[p] += Number(S.tdata[i][p]);
+            }
+        });
+    }
+}
+const percent=(price,sum)=>(((price/sum)*100)||0).toFixed(1)+"%";
+const title=cell=>{
+    const d=cell.getData();
+    return`${d.item}<br>${d.price}<br>${percent(d.price,S.sum.price)}`;
+}
+const personPrice=cell=>{
+    const val=cell.getValue();
+    const d=cell.getData();
+    return `${val}
+<br>${((d.price/d.bunbo*val)||0).toFixed(1)}
+<br>${percent(val,d.bunbo)}`;
+}
+const priceSum=values=>{
+    if(!S.table)return;
+    const d=S.table.getData();
+    let sum=0;
+    d.forEach(item=>{
+        sum+=Number(item.price);
+    });
+    return sum.toLocaleString();
+}
+const personSum=(values,data,params)=>{
+    if(!S.table)return;
+    return S.sum[params.name].toFixed(1)
+            +"<br>"
+            +percent(S.sum[params.name],S.sum.price);
+}
+let xxx=0;;
+const tab=()=>{
+    if(S.table){
+        S.table.setData(S.tdata);
+        return;
+    }
+    let cols= [
+//{field:'id',width:5,hozAlign:'right',bottomCalc:()=>"合計"},
+{field:'item',   title:'項目',formatter:title,bottomCalc:priceSum},
+{field:'sachiko',title:'幸子',formatter:personPrice,bottomCalc:personSum,bottomCalcParams:{name:'sachiko'}},
+{field:'tomoko', title:'智子',formatter:personPrice,bottomCalc:personSum,bottomCalcParams:{name:'tomoko'}},
+{field:'masako', title:'正子',formatter:personPrice,bottomCalc:personSum,bottomCalcParams:{name:'masako'}},
+{field:'ritsuko',title:'律子',formatter:personPrice,bottomCalc:personSum,bottomCalcParams:{name:'ritsuko'}},
+{field:'shinya', title:'慎哉',formatter:personPrice,bottomCalc:personSum,bottomCalcParams:{name:'shinya'}},
+    ];
+    cols.forEach(item=>{
+        item.hozAlign='right';
+        item.bottomCalcFormatter='html';
+        item.resizable=false;
+        item.headerSort=false;
+        item.width='7em';
+    });
+    S.table = new Tabulator("#result2",{
+        selectable: false,
+        layoutColumnsOnNewData:true,
+        columns: cols,
+        data: S.tdata
+    });
+    S.table.setData(S.tdata);
+}
+
+const make_body=()=>{
+  new Vue({
+        el: "#app",
+        data:{
+            tdata:S.tdata
+        },
+        methods: {
+           up:function(index,key){
+            const n=Number(this.$data.tdata[index][key])||0;
+            this.$data.tdata[index][key]=n+1;
+           },
+           down:function(index,key){
+            const n=Number(this.$data.tdata[index][key])||0;
+            if(!n) this.$data.tdata[index][key]=0;
+            if(n>0){
+                this.$data.tdata[index][key]=n-1;
+            }
+           },
+           calc_bunbo:function(val){
+                this.bunbo=val;
+           } 
+        },
+        watch: {
+            tdata:{
+                deep:true,
+                handler(after){
+                    after.filter(function(val){
+                        // 分母計算
+                        val.bunbo=0;
+                        plist.forEach(p=>{
+                            if(Number(val[p])){
+                                val.bunbo+=Number(val[p]);
+                            }
+                        });
+                        // 分割金額
+                        plist.forEach(p=>{
+                            if(val.bunbo && val[p]){
+                                val[`b_${p}`] = val.price/val.bunbo*val[p];
+                                val[`p_${p}`] = val[p]/val.bunbo;
+                            }
+                            else {
+                                val[`b_${p}`] = 0;
+                                val[`p_${p}`] = 0;
+                            }
+                        });
+                    })
+                    // 合計値
+                    plist.forEach(p=>{
+                        S.sum[p]=0;
+                    });
+                    plist.forEach(p=>{
+                        // 合計値計算
+                        for(let i in S.tdata){
+                            S.sum[p]+=Number(S.tdata[i][`b_${p}`]);
+                        }
+                        // 合計％
+                        S.sum[`b_${p}`]=S.sum[p]/S.sum.price;
+                    });
+                    S.sum.price=0;
+                    for(let i in S.tdata){
+                        S.sum.price += Number(S.tdata[i].price);
+                    }
+                    tab();
+
+                },
+            }
+        },
+        filters: {
+            percent:function(val){
+                if(val){
+                    return Number(val*100).toFixed(1)+"%";
+                }
+                return "0%";
+            },
+            fix:function(val){
+                if(val){
+                    return Number(val).toFixed(1);
+                }
+                return "0";
+            },
+        }
+  });
+    tab();
+}
+</script>
+
+<body onload=make_body() style='font-size:large;'>
+<div id=app>
+    <table border=1>
+    <tr>
+    <th >項目
+    <br>評価額
+    <th>幸子
+    <th>智子
+    <th>正子
+    <th>律子
+    <th>慎哉
+    <th>分母
+    </tr>
+    <template v-for="(d,index) in tdata">
+     <tr>
+        <td> {{d.item}} 
+        <td> <button v-on:click="up(index,'sachiko')">up</button>
+             <button v-on:click="down(index,'sachiko')">dwn</button>
+        <td> <button v-on:click="up(index,'tomoko')">up</button>
+             <button v-on:click="down(index,'tomoko')">dwn</button>
+        <td> <button v-on:click="up(index,'masako')">up</button>
+             <button v-on:click="down(index,'masako')">dwn</button>
+        <td> <button v-on:click="up(index,'ritsuko')">up</button>
+             <button v-on:click="down(index,'ritsuko')">dwn</button>
+        <td> <button v-on:click="up(index,'shinya')">up</button>
+             <button v-on:click="down(index,'shinya')">dwn</button>
+
+
+     <tr>
+        <td><input type="text" v-model="d.price" size=4>
+        <td><input type="text" v-model="d.sachiko" size=4>
+        <td><input type="text" v-model="d.tomoko" size=4>
+        <td><input type="text" v-model="d.masako" size=4>
+        <td><input type="text" v-model="d.ritsuko" size=4>
+        <td><input type="text" v-model="d.shinya" size=4>
+        <td align=right>{{d.bunbo}}
+    </template>
+
+    </table>
+
+<div id=result2></div>
+</div>
+
+<p>
+$Revision: 1.14 $
+</body>
+
